@@ -84,23 +84,32 @@ grows. Emails never leave the database.
 ## 3. Train
 
 ```bash
-python -m dmi.train.launch --model gemma-4-12b --dataset <name> --smoke   # ~10 steps, checks the pipeline
+python -m dmi.train.launch --model gemma-4-12b --dataset <name> --smoke   # 10 steps on the 64 longest samples
 python -m dmi.train.launch --model gemma-4-12b --dataset <name>
 ```
 
 LoRA SFT with TRL on a PyTorch 2.10 SageMaker image (`ml.p4d.24xlarge`,
 torchrun across 8 GPUs; pinned versions in `src/dmi/train/requirements.txt`).
-Loss is on the label only and includes the chat template's end-of-turn token,
-so the model learns to stop. Samples longer than the model's `max_seq_len` are
-dropped, not truncated. The job writes the adapter, a merged bf16 model, and
-`run_info.json` to `s3://.../training-jobs/<job>/output/model/`.
+Run `--smoke` first: it trains on the longest samples, so an out-of-memory
+problem shows up in minutes rather than hours into the full run. If it OOMs,
+pass `--instance-type ml.p4de.24xlarge` (80 GB A100s) or lower `--max-seq-len`.
+
+Each sample is tokenized exactly as vLLM will serve it
+(`src/dmi/train/tokenization.py`): the chat template's generation prompt, then
+the label and the template's end-of-turn token, with loss on the label and the
+end-of-turn token only. Rendering the whole conversation instead would not
+match serving for Gemma 4, whose generation prompt (thinking off) contains an
+empty thought channel that a finished assistant turn doesn't. Samples longer
+than `max_seq_len` are dropped, not truncated. The job writes the adapter, a
+merged bf16 model, and `run_info.json` to
+`s3://.../training-jobs/<job>/output/model/`.
 
 Models are registered in `src/dmi/train/models.py`:
 
 | key | base | notes |
 | --- | --- | --- |
-| `gemma-4-12b` | `google/gemma-4-12B-it` | Apache-2.0; needs transformers>=5.5.2 and vLLM>=0.23 |
-| `llama-3.1-8b` | `meta-llama/Llama-3.1-8B-Instruct` | previous fine-tune base, kept as a baseline |
+| `gemma-4-12b` | `google/gemma-4-12B-it` | `Gemma4UnifiedForConditionalGeneration`, Apache-2.0, not gated. LoRA on all attention + MLP projections of the 48 text layers (PEFT has no defaults for this architecture). Needs transformers>=5.10, vLLM>=0.23 |
+| `llama-3.1-8b` | `meta-llama/Llama-3.1-8B-Instruct` | previous fine-tune base, kept as a baseline; gated (needs `HF_TOKEN`) |
 
 ## 4. Deploy on Modal
 

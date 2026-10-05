@@ -178,26 +178,15 @@ def _percentile(sorted_values: list[int], q: float) -> int:
 
 
 def report_token_lengths(conn, params: dict, tokenizer_id: str, max_seq_len: int | None, limit: int | None) -> None:
-    from jinja2.exceptions import TemplateError
     from transformers import AutoTokenizer
 
-    from dmi.screening.inputs import js_json_dumps, user_message
+    from dmi.screening import labels as screen_labels
+    from dmi.screening.inputs import user_message
     from dmi.screening.prompt import system_prompt
+    from dmi.train.tokenization import SampleTokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_id)
-
-    def n_tokens(messages: list[dict], generation_prompt: bool = False) -> int:
-        render = lambda msgs: tokenizer.apply_chat_template(  # noqa: E731
-            msgs, tokenize=False, add_generation_prompt=generation_prompt
-        )
-        try:
-            text = render(messages)
-        except TemplateError:
-            # Templates without a system role: fold it into the first user turn
-            merged = [{"role": "user", "content": messages[0]["content"] + "\n\n" + messages[1]["content"]}]
-            text = render(merged + messages[2:])
-        # The rendered template already carries BOS and other special tokens
-        return len(tokenizer(text, add_special_tokens=False)["input_ids"])
+    # Same tokenization as training (dmi.train.tokenization), so "fits" matches what the job keeps
+    sample_tokenizer = SampleTokenizer(AutoTokenizer.from_pretrained(tokenizer_id), tokenizer_id)
 
     sql = (
         SCREENS_CTE
@@ -213,16 +202,16 @@ def report_token_lengths(conn, params: dict, tokenizer_id: str, max_seq_len: int
         cur.itersize = 500
         cur.execute(sql, {**params, "limit": limit})
         for i, (screened_at, response, linkedin_data) in enumerate(cur, 1):
-            label = {k: v for k, v in response.items() if k != "tier"}
-            prompt_msgs = [
+            prompt_ids = sample_tokenizer.prompt_ids([
                 {"role": "system", "content": system_prompt(screened_at)},
                 {"role": "user", "content": user_message(linkedin_data)},
-            ]
-            full = n_tokens(prompt_msgs + [{"role": "assistant", "content": js_json_dumps(label)}])
-            prompt_only = n_tokens(prompt_msgs, generation_prompt=True)
-            totals.append(full)
-            prompts.append(prompt_only)
-            labels.append(full - prompt_only)
+            ])
+            label_ids = sample_tokenizer.completion_ids(
+                screen_labels.serialize(screen_labels.normalize(response))
+            )
+            totals.append(len(prompt_ids) + len(label_ids))
+            prompts.append(len(prompt_ids))
+            labels.append(len(label_ids))
             if i % 2000 == 0:
                 print(f"  tokenized {i} rows...", flush=True)
 

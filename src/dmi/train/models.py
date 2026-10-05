@@ -45,12 +45,17 @@ MODELS: dict[str, ModelSpec] = {
             key="gemma-4-12b",
             hf_id="google/gemma-4-12B-it",
             max_seq_len=12288,
-            # PEFT's Gemma 4 default scopes LoRA to the language model and avoids
-            # Gemma4ClippableLinear, which explicit module lists trip over.
-            lora_target_modules=None,
+            # Gemma4UnifiedForConditionalGeneration (model_type gemma4_unified): PEFT has no
+            # default targets for it, and "all-linear" would also hit the vision/audio
+            # embedders. Every attention + MLP projection of the 48 text layers.
+            lora_target_modules=(
+                r".*language_model\.layers\.\d+\.(self_attn\.(q|k|v|o)_proj|mlp\.(gate|up|down)_proj)"
+            ),
             notes=(
-                "12B dense, Apache-2.0. Needs transformers>=5.5.2 (KV-sharing fix) and "
-                "vLLM>=0.23 to serve. bf16 weights ~24 GB."
+                "11.96B dense, Apache-2.0, not gated. Needs transformers>=5.10 (gemma4_unified; "
+                ">=5.5.2 for the KV-sharing training fix) and vLLM>=0.23 to serve. bf16 weights "
+                "~24 GB. Chat template adds an empty thought channel to the generation prompt "
+                "when thinking is off; dmi.train.tokenization trains on that exact prompt."
             ),
         ),
         ModelSpec(

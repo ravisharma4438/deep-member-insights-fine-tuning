@@ -1,7 +1,7 @@
 """Launch a LoRA fine-tuning job on SageMaker (SDK v3 ModelTrainer). Run from Studio:
 
     python -m dmi.train.launch --model gemma-4-12b --dataset screens-20251205-20261005
-    python -m dmi.train.launch --model gemma-4-12b --dataset <name> --smoke   # ~10 steps, no merge
+    python -m dmi.train.launch --model gemma-4-12b --dataset <name> --smoke   # 10 steps on longest samples
 
 The job uploads src/ (dmi package) and runs dmi/train/sft.py under torchrun on
 a PyTorch training image, with dmi/train/requirements.txt installed on top.
@@ -28,7 +28,8 @@ def main() -> None:
     parser.add_argument("--epochs", type=float)
     parser.add_argument("--learning-rate", type=float)
     parser.add_argument("--max-seq-len", type=int)
-    parser.add_argument("--smoke", action="store_true", help="10 steps on 64 samples, no merge")
+    parser.add_argument("--smoke", action="store_true",
+                        help="10 steps on the 64 longest samples (catches OOM early), no merge")
     parser.add_argument("--max-runtime-hours", type=float, default=48)
     parser.add_argument("--wait", action="store_true", help="stream logs until the job finishes")
     args = parser.parse_args()
@@ -70,7 +71,9 @@ def main() -> None:
         if value is not None:
             hyperparameters[key] = value
     if args.smoke:
-        hyperparameters.update(max_steps=10, max_train_samples=64, max_eval_samples=8, merge=False)
+        hyperparameters.update(
+            max_steps=10, max_train_samples=64, longest_first=True, max_eval_samples=8, merge=False
+        )
 
     environment = {"TOKENIZERS_PARALLELISM": "false"}
     hf_token = settings.get("HF_TOKEN")

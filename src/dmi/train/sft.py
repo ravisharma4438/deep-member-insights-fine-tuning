@@ -6,8 +6,9 @@ Outputs: /opt/ml/model/adapter/   LoRA adapter
          /opt/ml/model/merged/    base + adapter merged, ready for vLLM
          /opt/ml/model/run_info.json
 
-Loss is on the label only (TRL prompt-completion format), and the completion
-ends with the chat template's end-of-turn token, so the model learns to stop.
+Each sample is tokenized exactly as vLLM serves it (dmi.train.tokenization):
+the generation prompt, then the label and the template's end-of-turn token,
+with loss on the label + end-of-turn only, so the model learns to stop.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from dmi.train import models  # noqa: E402
+from dmi.train.tokenization import SampleTokenizer  # noqa: E402
 
 SM_MODEL_DIR = Path(os.environ.get("SM_MODEL_DIR", "/opt/ml/model"))
 SM_TRAIN_CHANNEL = Path(os.environ.get("SM_CHANNEL_TRAINING", "/opt/ml/input/data/training"))
@@ -46,6 +48,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gradient_accumulation_steps", type=int)
     p.add_argument("--lora_r", type=int)
     p.add_argument("--max_train_samples", type=int, help="cap for smoke tests")
+    p.add_argument("--longest_first", type=_bool, default=False,
+                   help="with --max_train_samples, take the longest samples (surfaces OOM early)")
     p.add_argument("--max_eval_samples", type=int, default=200)
     p.add_argument("--max_steps", type=int, default=-1)
     p.add_argument("--eval_steps", type=int, default=200)
@@ -70,27 +74,38 @@ def main() -> None:
     log = (lambda *a: print(*a, flush=True)) if state.is_main_process else (lambda *a: None)
 
     tokenizer = AutoTokenizer.from_pretrained(spec.hf_id)
+    sample_tokenizer = SampleTokenizer(tokenizer, spec.hf_id)
+    log(f"end-of-turn tokens trained on: {tokenizer.convert_ids_to_tokens(sample_tokenizer.end_ids)}")
 
     data_files = {"train": str(args.data_dir / "train.jsonl"), "val": str(args.data_dir / "val.jsonl")}
     raw = load_dataset("json", data_files=data_files)
-    keep = ["prompt", "completion"]
-    raw = raw.remove_columns([c for c in raw["train"].column_names if c not in keep])
 
-    def n_tokens(example: dict) -> dict:
-        text = tokenizer.apply_chat_template(example["prompt"] + example["completion"], tokenize=False)
-        return {"n_tokens": len(tokenizer(text, add_special_tokens=False)["input_ids"])}
+    def tokenize(example: dict) -> dict:
+        return sample_tokenizer(example["prompt"], example["completion"][0]["content"])
 
-    # Rank 0 tokenizes and caches; other ranks reuse the cache.
+    # Pre-tokenized (input_ids + completion_mask), so TRL trains on exactly the
+    # serving-time sequence. Rank 0 tokenizes and caches; other ranks reuse the cache.
     with state.main_process_first():
-        measured = raw.map(n_tokens, num_proc=min(16, os.cpu_count() or 1), desc="Measuring lengths")
-        fitting = measured.filter(lambda n: n <= max_seq_len, input_columns="n_tokens")
-    dropped = {split: len(measured[split]) - len(fitting[split]) for split in measured}
+        tokenized = raw.map(
+            tokenize,
+            remove_columns=raw["train"].column_names,
+            num_proc=min(16, os.cpu_count() or 1),
+            desc="Tokenizing",
+        )
+        fitting = tokenized.filter(lambda ids: len(ids) <= max_seq_len, input_columns="input_ids")
+    dropped = {split: len(tokenized[split]) - len(fitting[split]) for split in tokenized}
     log(f"max_seq_len={max_seq_len}: kept {dict((s, len(fitting[s])) for s in fitting)}, dropped {dropped}")
 
-    train_ds = fitting["train"].remove_columns("n_tokens").shuffle(seed=args.seed)
-    eval_ds = fitting["val"].remove_columns("n_tokens").shuffle(seed=args.seed)
+    train_ds = fitting["train"].shuffle(seed=args.seed)
+    eval_ds = fitting["val"].shuffle(seed=args.seed)
     if args.max_train_samples:
-        train_ds = train_ds.select(range(min(args.max_train_samples, len(train_ds))))
+        if args.longest_first:
+            lengths = [len(ids) for ids in train_ds["input_ids"]]
+            order = sorted(range(len(lengths)), key=lengths.__getitem__, reverse=True)
+            train_ds = train_ds.select(order[: args.max_train_samples])
+            log(f"longest_first: training on lengths {lengths[order[0]]}..{lengths[order[min(len(order), args.max_train_samples) - 1]]}")
+        else:
+            train_ds = train_ds.select(range(min(args.max_train_samples, len(train_ds))))
     eval_ds = eval_ds.select(range(min(args.max_eval_samples, len(eval_ds))))
 
     peft_config = LoraConfig(
@@ -115,8 +130,9 @@ def main() -> None:
     work_dir = Path("/tmp/sft")
     config = SFTConfig(
         output_dir=str(work_dir),
-        max_length=max_seq_len,
+        max_length=max_seq_len,  # never truncates: longer samples were dropped above
         packing=False,
+        completion_only_loss=True,  # loss from completion_mask: label + end-of-turn only
         num_train_epochs=args.num_train_epochs or spec.num_train_epochs,
         max_steps=args.max_steps,
         per_device_train_batch_size=spec.per_device_batch_size,
@@ -128,7 +144,7 @@ def main() -> None:
         bf16=True,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
-        model_init_kwargs={"dtype": torch.bfloat16, "attn_implementation": "sdpa"},
+        model_init_kwargs={"dtype": torch.bfloat16},
         logging_steps=10,
         eval_strategy="steps" if len(eval_ds) else "no",
         eval_steps=args.eval_steps,
@@ -191,10 +207,12 @@ def merge(base_id: str, base_cls, adapter_dir: Path, merged_dir: Path) -> None:
     merged = PeftModel.from_pretrained(base, str(adapter_dir)).merge_and_unload()
     merged.save_pretrained(str(merged_dir), safe_serialization=True, max_shard_size="5GB")
 
-    base_files = Path(snapshot_download(base_id, ignore_patterns=list(_WEIGHT_FILES)))
+    base_files = Path(base_id) if Path(base_id).is_dir() else Path(
+        snapshot_download(base_id, ignore_patterns=list(_WEIGHT_FILES))
+    )
     for src in base_files.rglob("*"):
         dest = merged_dir / src.relative_to(base_files)
-        if src.is_file() and not dest.exists():
+        if src.is_file() and not dest.exists() and not any(src.match(p) for p in _WEIGHT_FILES):
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dest)
     print(f"Merged model written to {merged_dir}", flush=True)
