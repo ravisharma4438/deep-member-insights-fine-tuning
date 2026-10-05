@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from dmi.screening.eras import LABEL_ERAS, REVERSE_CONTACT_SINCE
+from dmi.screening.eras import LABEL_ERAS, LABEL_MODEL, REVERSE_CONTACT_SINCE
 from dmi.screening.prompt import PROMPT_ID
 
 # Input re-scraped this long after the screen no longer matches what the label saw.
@@ -25,6 +25,8 @@ WITH s AS (
   FROM members
   WHERE jsonb_typeof(screen->'response') = 'object'
     AND screen->>'promptId' = %(prompt_id)s
+    -- labels only from the gateway model; excludes the fine-tuned model's own outputs
+    AND (screen->>'model' IS NULL OR screen->>'model' = %(label_model)s)
 )
 """
 
@@ -50,6 +52,7 @@ USABLE_ROWS = (
 def params(since: datetime, until: datetime) -> dict:
     return {
         "prompt_id": PROMPT_ID,
+        "label_model": LABEL_MODEL,
         "since": since,
         "until": until,
         "rc_since": REVERSE_CONTACT_SINCE,

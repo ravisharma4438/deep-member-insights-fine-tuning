@@ -48,6 +48,12 @@ LABEL_ERAS: tuple[LabelEra, ...] = (
 # First moment every production screen came from the current model.
 CURRENT_MODEL_SINCE: datetime = LABEL_ERAS[2].start + DEPLOY_BUFFER
 
+# Screens written after the platform's Modal integration record `screen.model`:
+# the gateway model id, or "modal/<served model>" for the fine-tuned model.
+# Training labels must come from the gateway model only (never the fine-tune's
+# own outputs); screens without the field predate it and are attributed by date.
+LABEL_MODEL = "xai/grok-4.1-fast-reasoning"
+
 # Input-side shift: profiles scraped from here on come from Reverse Contact v2,
 # adapted to the Scrapin shape (no `company` object, no volunteering/interests).
 # fetchLinkedinData stamps cached data with its original scrape time, so
