@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dmi"
+version = "0.1.0"
+description = "Deep member insights: dataset building, fine-tuning, evals, and Modal serving for AI Collective member screening"
+requires-python = ">=3.10"
+dependencies = [
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+data = [
+    "psycopg[binary]>=3.1",
+    "transformers>=4.45",  # exact token counts with the target model's chat template
+    "jinja2>=3.1",
+]
+dev = [
+    "pytest>=7",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"dmi.screening" = ["resources/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
