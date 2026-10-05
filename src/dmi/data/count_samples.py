@@ -16,37 +16,13 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta, timezone
 
+from dmi.data.queries import IN_WINDOW, PROVIDER, SCREENS_CTE, USABLE, params as query_params
 from dmi.db import connect
-from dmi.screening.eras import (
-    CURRENT_MODEL_SINCE,
-    LABEL_ERAS,
-    REVERSE_CONTACT_SINCE,
-)
-from dmi.screening.prompt import PROMPT_ID
+from dmi.screening.eras import CURRENT_MODEL_SINCE, LABEL_ERAS
 
-# Input re-scraped this long after the screen no longer matches what the label saw.
-RESCRAPE_TOLERANCE = timedelta(hours=1)
 TOKEN_THRESHOLDS = (4096, 6144, 8192, 9400, 10240, 12288, 16384)
 
 _ISO = "'^[0-9]{4}-[0-9]{2}-[0-9]{2}T'"
-
-# Postgres inlines single-use CTEs, so the jsonb columns cost nothing in the aggregates.
-SCREENS_CTE = f"""
-WITH s AS (
-  SELECT
-    email, screen, linkedin_data,
-    CASE WHEN screen->>'date' ~ {_ISO} THEN (screen->>'date')::timestamptz END AS screened_at,
-    CASE WHEN linkedin_data->>'date' ~ {_ISO} THEN (linkedin_data->>'date')::timestamptz END AS scraped_at,
-    COALESCE(jsonb_typeof(linkedin_data->'person') = 'object', false) AS has_input,
-    COALESCE(screen->'usage'->>'reasoningTokens', '0') NOT IN ('0', '') AS has_reasoning_tokens
-  FROM members
-  WHERE jsonb_typeof(screen->'response') = 'object'
-    AND screen->>'promptId' = %(prompt_id)s
-)
-"""
-
-# A sample is usable when its stored input is the one the label was generated from.
-USABLE = "has_input AND (scraped_at IS NULL OR scraped_at <= screened_at + %(rescrape_tol)s)"
 
 
 def _parse_ts(value: str) -> datetime:
@@ -94,7 +70,7 @@ def report_eras(cur, params: dict) -> None:
 
 
 def report_window(cur, params: dict) -> int:
-    window = "screened_at >= %(since)s AND screened_at < %(until)s"
+    window = IN_WINDOW
     cur.execute(
         SCREENS_CTE
         + f"""
@@ -147,10 +123,10 @@ def report_position_keys(cur, params: dict) -> None:
         + f""",
         p AS (
           SELECT
-            CASE WHEN scraped_at >= %(rc_since)s THEN 'reverse_contact' ELSE 'scrapin' END AS provider,
+            {PROVIDER} AS provider,
             linkedin_data->'person'->'positions'->'positionHistory'->0 AS first_position
           FROM s
-          WHERE screened_at >= %(since)s AND screened_at < %(until)s
+          WHERE {IN_WINDOW}
             AND scraped_at IS NOT NULL AND {USABLE}
             AND jsonb_typeof(linkedin_data->'person'->'positions'->'positionHistory'->0) = 'object'
         ),
@@ -227,7 +203,7 @@ def report_token_lengths(conn, params: dict, tokenizer_id: str, max_seq_len: int
         SCREENS_CTE
         + f"""
         SELECT screened_at, screen->'response', linkedin_data FROM s
-        WHERE screened_at >= %(since)s AND screened_at < %(until)s AND {USABLE}
+        WHERE {IN_WINDOW} AND {USABLE}
         ORDER BY md5(email)
         """
         + (" LIMIT %(limit)s" if limit else "")
@@ -284,14 +260,7 @@ def main() -> None:
                         help="also count screens stored for CRM contacts")
     args = parser.parse_args()
 
-    params = {
-        "prompt_id": PROMPT_ID,
-        "since": args.since,
-        "until": args.until,
-        "rc_since": REVERSE_CONTACT_SINCE,
-        "rescrape_tol": RESCRAPE_TOLERANCE,
-        **{f"era_{i}": era.start for i, era in enumerate(LABEL_ERAS)},
-    }
+    params = query_params(args.since, args.until)
 
     with connect() as conn:
         with conn.cursor() as cur:

@@ -1,5 +1,7 @@
 {
   "prompt_id": "3",
-  "source": "src/lib/screen/screen-member.ts",
-  "source_commit": "5414f7a9721d20d2ab4c7c1e33f7e7a03afa6d92"
+  "prompt_source": "src/lib/screen/screen-member.ts",
+  "prompt_commit": "5414f7a9721d20d2ab4c7c1e33f7e7a03afa6d92",
+  "schema_source": "src/lib/screen/screen-data.ts",
+  "schema_commit": "840d8efd36908cc30c14df7e8aa269fae8290170"
 }

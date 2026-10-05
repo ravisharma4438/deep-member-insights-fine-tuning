@@ -1,0 +1,681 @@
+{
+  "type": "object",
+  "properties": {
+    "fullName": {
+      "type": "string",
+      "description": "Full name, cleaned of qualifiers and emojis"
+    },
+    "gender": {
+      "type": "string",
+      "enum": [
+        "Male",
+        "Female",
+        "Other"
+      ],
+      "description": "Inferred gender"
+    },
+    "estimatedAge": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Estimated age or null if unknown"
+    },
+    "location": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Location as city, region, country"
+    },
+    "currentCompany": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Current primary company"
+    },
+    "currentTitle": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Current primary job title"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "Executive/Founder",
+        "Engineering & Technical",
+        "Data & Research",
+        "Product & Design",
+        "Go-To-Market",
+        "Investor",
+        "Education & Academia",
+        "Policy & Legal",
+        "Operations & Finance",
+        "Other"
+      ],
+      "description": "Primary professional role"
+    },
+    "profileSummary": {
+      "type": "string",
+      "description": "A 1-2 sentence AI-focused summary"
+    },
+    "intellectualStance": {
+      "type": "string",
+      "description": "Their core intellectual thesis"
+    },
+    "engagementHook": {
+      "type": "string",
+      "description": "A specific ask to engage this person"
+    },
+    "industries": {
+      "type": "object",
+      "properties": {
+        "Software & SaaS": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Finance & FinTech": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Healthcare & Life Sciences": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Biotechnology & Pharma": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "E-commerce & Retail": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Media & Entertainment": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Telecommunications": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Hardware & Semiconductors": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Automotive & Robotics": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Energy & Utilities": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Government & Public Sector": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Professional Services & Consulting": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Education & EdTech": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Real Estate & PropTech": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Aerospace & Defense": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Logistics & Supply Chain": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        }
+      },
+      "additionalProperties": false,
+      "description": "Industries with relevance scores"
+    },
+    "yearsExperience": {
+      "type": "number",
+      "description": "Total years of professional experience"
+    },
+    "yearsAiExperience": {
+      "type": "number",
+      "description": "Years of direct AI-related experience"
+    },
+    "seniority": {
+      "type": "string",
+      "enum": [
+        "Student",
+        "Intern",
+        "Junior",
+        "Mid-Level",
+        "Senior",
+        "Manager",
+        "Director",
+        "Executive",
+        "Founder",
+        "Advisor",
+        "Professor"
+      ],
+      "description": "Inferred seniority level"
+    },
+    "highestEducation": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "High School",
+            "Associates",
+            "Bachelors",
+            "Masters",
+            "PhD"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Highest completed degree"
+    },
+    "fieldOfStudy": {
+      "type": "string",
+      "enum": [
+        "Computer Science & AI",
+        "Engineering (Non-CS)",
+        "Mathematics & Statistics",
+        "Natural Sciences",
+        "Business & Finance",
+        "Health & Medicine",
+        "Social Sciences",
+        "Humanities",
+        "Arts & Design",
+        "Other"
+      ],
+      "description": "Categorized field of study"
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Most relevant skills"
+    },
+    "topicInterests": {
+      "type": "object",
+      "properties": {
+        "Generative AI & LLMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "AI for Science & Research": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "AI Ethics & Safety": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Venture Capital & Startups": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Product Management & Design": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Crypto & Web3": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Biotech & Longevity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Climate Tech & Sustainability": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Future of Work & Education": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Open Source Software": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Robotics & Embodied AI": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Creator Economy": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Health & Fitness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Team Sports": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Arts & Music": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Gaming": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Travel & Culture": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        }
+      },
+      "additionalProperties": false,
+      "description": "Topics with interest scores"
+    },
+    "causeAffinities": {
+      "type": "object",
+      "properties": {
+        "Education Access & Quality": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Social Justice & Equity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Community Building": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Public Health & Wellness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Environmentalism": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Poverty Alleviation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Mental Health Awareness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Responsible Technology & Digital Wellbeing": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Civic Engagement": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Gender Equality": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "Animal Welfare": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        }
+      },
+      "additionalProperties": false,
+      "description": "Causes with affinity scores"
+    },
+    "missionAlignment": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Numeric score from 1 to 10"
+        },
+        "justification": {
+          "type": "string",
+          "description": "Single sentence explaining the reasoning"
+        }
+      },
+      "required": [
+        "score",
+        "justification"
+      ],
+      "additionalProperties": false,
+      "description": "Mission alignment score with justification"
+    },
+    "communityEngagement": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Numeric score from 1 to 10"
+        },
+        "justification": {
+          "type": "string",
+          "description": "Single sentence explaining the reasoning"
+        }
+      },
+      "required": [
+        "score",
+        "justification"
+      ],
+      "additionalProperties": false,
+      "description": "Community engagement likelihood score with justification"
+    },
+    "archetype": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "The Builder",
+            "The Researcher",
+            "The Translator",
+            "The Evangelist",
+            "The Connector",
+            "The Ethicist",
+            "The Visionary"
+          ]
+        },
+        "justification": {
+          "type": "string",
+          "description": "Single sentence explaining the reasoning"
+        }
+      },
+      "required": [
+        "type",
+        "justification"
+      ],
+      "additionalProperties": false,
+      "description": "Primary archetype with justification"
+    },
+    "careerTrajectory": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "Deepening Specialization",
+            "Pivoting",
+            "Scaling Leadership",
+            "Exploring"
+          ]
+        },
+        "justification": {
+          "type": "string",
+          "description": "Single sentence explaining the reasoning"
+        }
+      },
+      "required": [
+        "type",
+        "justification"
+      ],
+      "additionalProperties": false,
+      "description": "Career trajectory with justification"
+    },
+    "growthSlope": {
+      "type": "number",
+      "minimum": -1,
+      "maximum": 1,
+      "description": "Career momentum from -1.0 to 1.0"
+    },
+    "isFounder": {
+      "type": "boolean",
+      "description": "True if current title contains founder"
+    },
+    "founderCompanyStage": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Idea",
+            "Pre-Seed",
+            "Seed",
+            "Series A",
+            "Series B",
+            "Growth",
+            "Public or Acquired",
+            "Lifestyle",
+            "Non-Profit"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Company stage (if founder)"
+    },
+    "isInvestor": {
+      "type": "boolean",
+      "description": "True if roles include investor/VC/angel"
+    },
+    "isThoughtLeader": {
+      "type": "boolean",
+      "description": "True if evidence of content creation or speaking"
+    },
+    "partnershipsPotential": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Partnerships potential score"
+    },
+    "mentorshipLikelihood": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Mentorship likelihood score"
+    },
+    "jobSeekingProb90d": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Job seeking probability in next 90 days"
+    },
+    "quirkiness": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Unconventional profile score"
+    },
+    "collabMode": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "Team Player",
+            "Soloist/Specialist",
+            "Leader/Orchestrator",
+            "Maverick/Innovator"
+          ]
+        },
+        "justification": {
+          "type": "string",
+          "description": "Single sentence explaining the reasoning"
+        }
+      },
+      "required": [
+        "type",
+        "justification"
+      ],
+      "additionalProperties": false,
+      "description": "Collaboration modality with justification"
+    },
+    "riskFlags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "flag": {
+            "type": "string",
+            "enum": [
+              "Puffery",
+              "Gaps",
+              "Job Hopping",
+              "Keyword Stuffing"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "A brief sentence with specific evidence"
+          }
+        },
+        "required": [
+          "flag",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Array of potential red flags"
+    },
+    "scoreExperience": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Experience score"
+    },
+    "scoreEducation": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Education score"
+    },
+    "scoreInfluence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "Influence score"
+    },
+    "scoreAiRelevance": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "AI relevance score"
+    },
+    "scoreOverall": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Numeric score from 1 to 10"
+        },
+        "justification": {
+          "type": "string",
+          "description": "Single sentence explaining the reasoning"
+        }
+      },
+      "required": [
+        "score",
+        "justification"
+      ],
+      "additionalProperties": false,
+      "description": "Overall value score with justification"
+    }
+  },
+  "required": [
+    "fullName",
+    "gender",
+    "estimatedAge",
+    "location",
+    "currentCompany",
+    "currentTitle",
+    "role",
+    "profileSummary",
+    "intellectualStance",
+    "engagementHook",
+    "industries",
+    "yearsExperience",
+    "yearsAiExperience",
+    "seniority",
+    "highestEducation",
+    "fieldOfStudy",
+    "skills",
+    "topicInterests",
+    "causeAffinities",
+    "missionAlignment",
+    "communityEngagement",
+    "archetype",
+    "careerTrajectory",
+    "growthSlope",
+    "isFounder",
+    "founderCompanyStage",
+    "isInvestor",
+    "isThoughtLeader",
+    "partnershipsPotential",
+    "mentorshipLikelihood",
+    "jobSeekingProb90d",
+    "quirkiness",
+    "collabMode",
+    "riskFlags",
+    "scoreExperience",
+    "scoreEducation",
+    "scoreInfluence",
+    "scoreAiRelevance",
+    "scoreOverall"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

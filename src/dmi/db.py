@@ -2,23 +2,7 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
-from dotenv import load_dotenv
-
-
-def database_url() -> str:
-    # .env in the working directory, then the repo root (Studio runs from either)
-    load_dotenv()
-    load_dotenv(Path(__file__).resolve().parents[2] / ".env")
-    url = os.environ.get("DATABASE_URL")
-    if not url:
-        raise SystemExit(
-            "DATABASE_URL is not set. Add it to .env (see .env.example); "
-            "prefer a read-only Neon role."
-        )
-    return url
+from dmi import settings
 
 
 def connect():
@@ -29,6 +13,6 @@ def connect():
     """
     import psycopg
 
-    conn = psycopg.connect(database_url(), connect_timeout=15)
+    conn = psycopg.connect(settings.require("DATABASE_URL"), connect_timeout=15)
     conn.read_only = True
     return conn
