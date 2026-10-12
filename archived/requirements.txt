@@ -1,0 +1,2 @@
+# requirements.txt content
+deepspeed>=0.14.0

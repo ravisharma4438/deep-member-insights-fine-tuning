@@ -1,0 +1,8 @@
+# Installed inside the SageMaker PyTorch training container (torch comes from the image).
+# Gemma 4 needs transformers>=5.5.2 (KV-sharing training fix).
+transformers==5.18.0
+trl==1.14.1
+peft==0.21.2
+accelerate==1.15.0
+datasets==5.0.1
+bitsandbytes==0.50.2
