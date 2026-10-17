@@ -113,7 +113,15 @@ Models are registered in `src/dmi/train/models.py`:
 
 ## 4. Deploy on Modal
 
-From a machine with `pip install -e ".[serve]"` and `modal token new` done:
+From a machine with `pip install -e ".[serve]"` and `modal token new` done.
+To sanity-check a finished job first (a few test samples on a Modal GPU with
+plain transformers; works for smoke runs too, which have no merged model):
+
+```bash
+modal run scripts/try_inference.py --job <job> [--n 5] [--show]
+```
+
+Then:
 
 ```bash
 modal run serving/load_model.py --s3-uri s3://<bucket>/dmi/training-jobs/<job>/output/model/merged --name gemma-4-12b-<date>
@@ -157,6 +165,6 @@ src/dmi/
   train/               model registry, SageMaker launcher, in-container SFT script
   eval/                predict (endpoint), score, metrics
 serving/               Modal: load model from S3, vLLM OpenAI server
-scripts/               sync_from_platform.py
+scripts/               sync_from_platform.py, try_inference.py (quick GPU sanity check)
 tests/
 ```
