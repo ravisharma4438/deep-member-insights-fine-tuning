@@ -130,11 +130,13 @@ def score(prediction: dict | None, label: dict) -> dict[str, float | str | None]
             row[f"num_{field}"] = float(abs(t - g) <= tolerance + 1e-9)
             row[f"abs_err_{field}"] = abs(t - g)
 
+    # Without a prediction there is no set to compare; an empty label set would otherwise score 1
+    overlap = _jaccard if prediction is not None else (lambda a, b: 0.0)
     skills = lambda d: {_norm_text(s) for s in d.get("skills") or [] if isinstance(s, str)}  # noqa: E731
-    row["jac_skills"] = _jaccard(skills(pred), skills(label))
+    row["jac_skills"] = overlap(skills(pred), skills(label))
     for field in KEYED_SCORES:
         keys = lambda d: set(d.get(field) or {}) if isinstance(d.get(field), dict) else set()  # noqa: E731
-        row[f"jac_{field}"] = _jaccard(keys(pred), keys(label))
+        row[f"jac_{field}"] = overlap(keys(pred), keys(label))
     flags = lambda d: {f.get("flag") for f in d.get("riskFlags") or [] if isinstance(f, dict)}  # noqa: E731
-    row["jac_riskFlags"] = _jaccard(flags(pred), flags(label))
+    row["jac_riskFlags"] = overlap(flags(pred), flags(label))
     return row

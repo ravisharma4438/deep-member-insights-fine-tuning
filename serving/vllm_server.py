@@ -8,7 +8,7 @@ response_format={"type": "json_schema", ...}, which is what the platform's
 AI SDK generateObject sends.
 
 Auth is Modal proxy auth (on by default for servers). Create a token with
-`modal workspace proxy-tokens` and use "<token-id>.<token-secret>" as the
+`modal workspace proxy-tokens create --name dmi-screening` and use "<token-id>.<token-secret>" as the
 OpenAI API key: clients then send `Authorization: Bearer <id>.<secret>`.
 
 The model answers to two names: its versioned name, which responses report back
@@ -101,8 +101,9 @@ class Server:
         if SETTINGS["DMI_SERVE_QUANTIZATION"]:
             cmd += ["--quantization", SETTINGS["DMI_SERVE_QUANTIZATION"]]
         if "vision_config" in config or "audio_config" in config:
-            # Text-only workload: skip multimodal memory profiling
-            cmd += ["--limit-mm-per-prompt", json.dumps({"image": 0, "audio": 0})]
+            # Text-only workload: skip multimodal (image, audio, and video, which
+            # Gemma 4 reads through its vision tower) profiling and warmup
+            cmd += ["--limit-mm-per-prompt", json.dumps({"image": 0, "audio": 0, "video": 0})]
 
         print("Starting:", " ".join(cmd), flush=True)
         subprocess.Popen(cmd)

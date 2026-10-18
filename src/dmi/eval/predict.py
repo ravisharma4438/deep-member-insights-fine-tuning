@@ -11,7 +11,8 @@
 Requests mirror the platform's generateObject call: the stored system + user
 messages, temperature 0.1, and response_format json_schema with ScreenSchema.
 --limit takes a seeded random sample (the split files are in date order), so
-runs with the same --limit and --seed score the same samples.
+runs with the same --limit and --seed score the same samples. Before sending
+any, it waits for a scaled-to-zero endpoint to start (--wait-timeout).
 Writes outputs/evals/<run>/predictions.jsonl (one line per sample, including
 failures) for dmi.eval.score.
 """
@@ -93,6 +94,37 @@ async def predict_one(
     return record
 
 
+async def wait_until_ready(client, timeout_s: float) -> None:
+    """Poll GET /models until the endpoint serves.
+
+    A scaled-to-zero Modal server answers 503 "no upstreams available" at once
+    while a container starts (minutes for a 12B model), which would otherwise
+    fail every request. The poll itself makes Modal start a container.
+    """
+    from openai import APIConnectionError, APIStatusError, APITimeoutError
+
+    start = time.perf_counter()
+    while True:
+        try:
+            await client.models.list()
+            break
+        except APIStatusError as e:
+            if e.status_code in (401, 403):
+                raise SystemExit(f"Endpoint rejected the API key ({e.status_code}); check the key in .env.") from e
+            if e.status_code not in (502, 503, 504):
+                return  # no usable /models route (some gateways); go straight to predicting
+            error = e
+        except (APIConnectionError, APITimeoutError) as e:
+            error = e
+        elapsed = time.perf_counter() - start
+        if elapsed > timeout_s:
+            raise SystemExit(f"Endpoint not ready after {elapsed:.0f}s: {error}")
+        print(f"  waiting for the endpoint to start ({elapsed:.0f}s): {str(error)[:80]}", flush=True)
+        await asyncio.sleep(15 * BACKOFF_SCALE)
+    if time.perf_counter() - start > 1:
+        print(f"  endpoint ready after {time.perf_counter() - start:.0f}s", flush=True)
+
+
 async def run(args: argparse.Namespace) -> Path:
     from openai import AsyncOpenAI
 
@@ -104,8 +136,11 @@ async def run(args: argparse.Namespace) -> Path:
         base_url=args.base_url or settings.require("DMI_INFERENCE_URL"),
         api_key=settings.require(args.api_key_env),
         timeout=args.timeout,
-        max_retries=0,  # retries handled above, with longer backoff for cold starts
+        max_retries=0,  # retries handled in predict_one
     )
+
+    if args.wait_timeout:
+        await wait_until_ready(client, args.wait_timeout)
 
     out_dir = settings.REPO_ROOT / "outputs" / "evals" / args.run
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -142,7 +177,9 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0, help="sample seed for --limit")
     parser.add_argument("--model", default="dmi-screen", help="served model name")
     parser.add_argument("--concurrency", type=int, default=32)
-    parser.add_argument("--timeout", type=float, default=600, help="per-request seconds (cold starts are slow)")
+    parser.add_argument("--timeout", type=float, default=600, help="per-request seconds")
+    parser.add_argument("--wait-timeout", type=float, default=900,
+                        help="seconds to wait for a cold endpoint to start before predicting; 0 skips the wait")
     parser.add_argument("--max-tokens", type=int, default=MAX_TOKENS, help="0 = no limit")
     parser.add_argument("--base-url", help="default: $DMI_INFERENCE_URL")
     parser.add_argument("--api-key-env", default="DMI_INFERENCE_API_KEY",

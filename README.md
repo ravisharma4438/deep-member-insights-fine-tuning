@@ -126,7 +126,7 @@ Then:
 ```bash
 modal run serving/load_model.py --s3-uri s3://<bucket>/dmi/training-jobs/<job>/output/model/merged --name gemma-4-12b-<date>
 DMI_SERVE_MODEL=gemma-4-12b-<date> modal deploy serving/vllm_server.py
-modal workspace proxy-tokens   # create a token; DMI_INFERENCE_API_KEY=<token-id>.<token-secret>
+modal workspace proxy-tokens create --name dmi-screening   # DMI_INFERENCE_API_KEY=<wk-...>.<ws-...>
 ```
 
 `serving/vllm_server.py` documents the GPU / quantization / scaling settings.
@@ -169,6 +169,9 @@ optional LLM-judged free text (`--judge`), and latency / token / failure
 stats, overall and by scrape provider. `--limit` takes a seeded random sample
 (the split files are in date order), so runs with the same `--limit` and
 `--seed` score the same profiles; `compare` restricts to the shared ones.
+`predict` first waits for a scaled-to-zero Modal endpoint to start (it answers
+503 "no upstreams available" until a container is up, about 5 minutes for a
+cold start), so no separate warm-up is needed.
 
 ## Development
 

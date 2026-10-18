@@ -20,9 +20,13 @@ def test_identical_prediction_scores_perfectly():
 def test_unparseable_prediction_scores_zero():
     assert metrics.parse_prediction("{not json") is None
     assert metrics.parse_prediction('["a list"]') is None
-    row = metrics.score(None, _label())
+    label = _label()
+    label["riskFlags"], label["causeAffinities"] = [], {}  # empty sets must not match a missing prediction
+    row = metrics.score(None, label)
     assert row["valid_json"] == row["schema_valid"] == row["tier"] == row["tier_within_1"] == 0.0
     assert row["acc_role"] == 0.0 and row["num_yearsExperience"] == 0.0
+    scored = {k: v for k, v in row.items() if isinstance(v, float)}
+    assert all(v == 0.0 for v in scored.values()), {k: v for k, v in scored.items() if v != 0.0}
 
 
 def test_numeric_tolerance_and_tier_boundary():
