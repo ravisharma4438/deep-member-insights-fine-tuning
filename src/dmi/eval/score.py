@@ -19,10 +19,10 @@ from statistics import mean
 from dmi import settings
 from dmi.eval import metrics
 
-TIERS = ("H+", "H", "M", "L", "L-")
+TIERS = metrics.TIERS
 HEADLINE = (
-    "valid_json", "schema_valid", "tier", "num_scoreOverall.score", "acc_role", "acc_seniority",
-    "acc_archetype.type", "jac_skills", "jac_industries", "jac_riskFlags",
+    "valid_json", "schema_valid", "tier", "tier_within_1", "num_scoreOverall.score", "acc_role",
+    "acc_seniority", "acc_archetype.type", "jac_skills", "jac_industries", "jac_riskFlags",
 )
 
 JUDGE_PROMPT = """You are grading one field of an AI-generated LinkedIn profile analysis against a reference.

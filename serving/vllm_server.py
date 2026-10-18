@@ -17,6 +17,9 @@ The model answers to two names: its versioned name, which responses report back
 
 Deploy-time settings (environment variables):
     DMI_SERVE_MODEL               required, directory name in the dmi-models volume
+    DMI_SERVE_APP                 default dmi-screening (the production app). Use another
+                                  name to serve a second model alongside, e.g. an eval baseline:
+                                  DMI_SERVE_APP=dmi-screening-base DMI_SERVE_MODEL=gemma-4-12b-base
     DMI_SERVE_GPU                 default L40S (48 GB; fits a 12B model in bf16)
     DMI_SERVE_QUANTIZATION        e.g. fp8 to quantize at load time (needed for a 12B model on an L4)
     DMI_SERVE_MAX_LEN             default 16384 tokens (prompt + output)
@@ -40,6 +43,7 @@ PORT = 8000
 
 SETTINGS = {
     "DMI_SERVE_MODEL": os.environ.get("DMI_SERVE_MODEL", ""),
+    "DMI_SERVE_APP": os.environ.get("DMI_SERVE_APP", "dmi-screening"),
     "DMI_SERVE_GPU": os.environ.get("DMI_SERVE_GPU", "L40S"),
     "DMI_SERVE_QUANTIZATION": os.environ.get("DMI_SERVE_QUANTIZATION", ""),
     "DMI_SERVE_MAX_LEN": os.environ.get("DMI_SERVE_MAX_LEN", "16384"),
@@ -61,7 +65,7 @@ image = (
 models_volume = modal.Volume.from_name("dmi-models")
 vllm_cache = modal.Volume.from_name("dmi-vllm-cache", create_if_missing=True)
 
-app = modal.App("dmi-screening")
+app = modal.App(SETTINGS["DMI_SERVE_APP"])
 
 
 @app.server(

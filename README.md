@@ -136,16 +136,39 @@ The endpoint requires Modal proxy auth; clients send
 
 ## 5. Evaluate
 
+Three runs over the same test samples, then one comparison table:
+
 ```bash
-python -m dmi.eval.predict --dataset <name> --run gemma-4-12b-v1     # test split -> outputs/evals/<run>/
-python -m dmi.eval.score --run gemma-4-12b-v1 [--judge]
+D=screens-20251205-20261012
+
+# 1. The fine-tuned model (the deployed endpoint, $DMI_INFERENCE_URL)
+python -m dmi.eval.predict --dataset $D --run gemma-4-12b-v1
+
+# 2. Reference: production's Grok re-screening the same profiles (needs AI_GATEWAY_API_KEY in .env).
+#    How well Grok agrees with its own stored labels is the ceiling for a model trained on them.
+python -m dmi.eval.predict --dataset $D --run grok-rerun --limit 500 \
+  --base-url https://ai-gateway.vercel.sh/v1 --api-key-env AI_GATEWAY_API_KEY \
+  --model xai/grok-4.1-fast-reasoning --max-tokens 0
+
+# 3. Optional baseline: the untuned base model, served as a separate Modal app
+modal run serving/load_model.py --hf-id google/gemma-4-12B-it --name gemma-4-12b-base
+DMI_SERVE_APP=dmi-screening-base DMI_SERVE_MODEL=gemma-4-12b-base modal deploy serving/vllm_server.py
+python -m dmi.eval.predict --dataset $D --run gemma-4-12b-base --limit 500 --base-url <that app's URL>/v1
+
+# Score each run, then compare on the samples they share
+for run in gemma-4-12b-v1 grok-rerun gemma-4-12b-base; do python -m dmi.eval.score --run $run; done
+python -m dmi.eval.compare gemma-4-12b-v1 grok-rerun gemma-4-12b-base
+python -m dmi.eval.compare gemma-4-12b-v1 grok-rerun --provider reverse_contact
 ```
 
 Requests mirror the platform's call exactly. Scoring reports JSON/schema
-validity, tier agreement (what the platform acts on) with a confusion matrix,
-exact-match categoricals, numeric fields within tolerance, set overlap for
-skills / industries / interests / risk flags, optional LLM-judged free text,
-and latency / token / failure stats, overall and by scrape provider.
+validity, tier agreement (what the platform acts on, exact and within one
+tier) with a confusion matrix, exact-match categoricals, numeric fields within
+tolerance, set overlap for skills / industries / interests / risk flags,
+optional LLM-judged free text (`--judge`), and latency / token / failure
+stats, overall and by scrape provider. `--limit` takes a seeded random sample
+(the split files are in date order), so runs with the same `--limit` and
+`--seed` score the same profiles; `compare` restricts to the shared ones.
 
 ## Development
 

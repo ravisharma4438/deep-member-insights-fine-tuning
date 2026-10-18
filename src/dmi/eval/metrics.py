@@ -11,6 +11,9 @@ from typing import Any
 
 from dmi.screening.labels import tier_for_rating, validation_error
 
+# Platform tiers, best first (tier_for_rating of scoreOverall.score).
+TIERS = ("H+", "H", "M", "L", "L-")
+
 # Enum / boolean fields compared exactly. Dotted paths reach into {type, justification} objects.
 CATEGORICAL = (
     "gender", "role", "seniority", "highestEducation", "fieldOfStudy",
@@ -102,6 +105,11 @@ def score(prediction: dict | None, label: dict) -> dict[str, float | str | None]
     row["label_tier"] = label_tier
     row["pred_tier"] = pred_tier
     row["tier"] = float(label_tier is not None and pred_tier == label_tier)
+    row["tier_within_1"] = float(
+        label_tier is not None
+        and pred_tier is not None
+        and abs(TIERS.index(pred_tier) - TIERS.index(label_tier)) <= 1
+    )
 
     for field in CATEGORICAL:
         row[f"acc_{field}"] = float(_path(pred, field) == _path(label, field))

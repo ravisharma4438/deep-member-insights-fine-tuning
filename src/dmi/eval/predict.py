@@ -1,10 +1,17 @@
 """Run a dataset split through an OpenAI-compatible endpoint (e.g. the Modal vLLM server).
 
     python -m dmi.eval.predict --dataset screens-20251205-20261005 --run gemma-4-12b-v1
-    python -m dmi.eval.predict --dataset <name> --run <run> --limit 50 --concurrency 16
+    python -m dmi.eval.predict --dataset <name> --run <run> --limit 500 --concurrency 16
+
+    # Reference run: the production teacher re-screening the same samples
+    python -m dmi.eval.predict --dataset <name> --run grok-rerun --limit 500 \
+        --base-url https://ai-gateway.vercel.sh/v1 --api-key-env AI_GATEWAY_API_KEY \
+        --model xai/grok-4.1-fast-reasoning --max-tokens 0
 
 Requests mirror the platform's generateObject call: the stored system + user
 messages, temperature 0.1, and response_format json_schema with ScreenSchema.
+--limit takes a seeded random sample (the split files are in date order), so
+runs with the same --limit and --seed score the same samples.
 Writes outputs/evals/<run>/predictions.jsonl (one line per sample, including
 failures) for dmi.eval.score.
 """
@@ -14,6 +21,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import random
 import time
 from pathlib import Path
 
@@ -40,7 +48,9 @@ def load_split(dataset: str, split: str) -> list[dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
-async def predict_one(client, model: str, example: dict, semaphore: asyncio.Semaphore) -> dict:
+async def predict_one(
+    client, model: str, example: dict, semaphore: asyncio.Semaphore, max_tokens: int = MAX_TOKENS
+) -> dict:
     from openai import APIConnectionError, APIStatusError, APITimeoutError
 
     record = {
@@ -56,7 +66,8 @@ async def predict_one(client, model: str, example: dict, semaphore: asyncio.Sema
                     model=model,
                     messages=example["prompt"],
                     temperature=TEMPERATURE,
-                    max_tokens=MAX_TOKENS,
+                    # 0 sends no limit (reasoning models spend output tokens on thinking)
+                    **({"max_tokens": max_tokens} if max_tokens else {}),
                     response_format={
                         "type": "json_schema",
                         "json_schema": {"name": "response", "schema": screen_schema()},
@@ -86,12 +97,12 @@ async def run(args: argparse.Namespace) -> Path:
     from openai import AsyncOpenAI
 
     examples = load_split(args.dataset, args.split)
-    if args.limit:
-        examples = examples[: args.limit]
+    if args.limit and args.limit < len(examples):
+        examples = random.Random(args.seed).sample(examples, args.limit)
 
     client = AsyncOpenAI(
         base_url=args.base_url or settings.require("DMI_INFERENCE_URL"),
-        api_key=args.api_key or settings.require("DMI_INFERENCE_API_KEY"),
+        api_key=settings.require(args.api_key_env),
         timeout=args.timeout,
         max_retries=0,  # retries handled above, with longer backoff for cold starts
     )
@@ -105,7 +116,8 @@ async def run(args: argparse.Namespace) -> Path:
     start = time.perf_counter()
     done = 0
     with out_path.open("w") as out:
-        for coro in asyncio.as_completed([predict_one(client, args.model, ex, semaphore) for ex in examples]):
+        tasks = [predict_one(client, args.model, ex, semaphore, args.max_tokens) for ex in examples]
+        for coro in asyncio.as_completed(tasks):
             record = await coro
             out.write(json.dumps(record, ensure_ascii=False) + "\n")
             done += 1
@@ -113,9 +125,9 @@ async def run(args: argparse.Namespace) -> Path:
                 print(f"  {done}/{len(examples)} ({time.perf_counter() - start:.0f}s)", flush=True)
 
     (out_dir / "predict_config.json").write_text(json.dumps({
-        "dataset": args.dataset, "split": args.split, "limit": args.limit, "model": args.model,
-        "base_url": args.base_url or settings.get("DMI_INFERENCE_URL"),
-        "temperature": TEMPERATURE, "max_tokens": MAX_TOKENS,
+        "dataset": args.dataset, "split": args.split, "limit": args.limit, "seed": args.seed,
+        "model": args.model, "base_url": args.base_url or settings.get("DMI_INFERENCE_URL"),
+        "temperature": TEMPERATURE, "max_tokens": args.max_tokens or None,
         "wall_clock_s": round(time.perf_counter() - start, 1),
     }, indent=2) + "\n")
     return out_path
@@ -126,12 +138,15 @@ def main() -> None:
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--run", required=True, help="name for outputs/evals/<run>/")
     parser.add_argument("--split", default="test", choices=("train", "val", "test"))
-    parser.add_argument("--limit", type=int)
+    parser.add_argument("--limit", type=int, help="score a seeded random sample of this many")
+    parser.add_argument("--seed", type=int, default=0, help="sample seed for --limit")
     parser.add_argument("--model", default="dmi-screen", help="served model name")
     parser.add_argument("--concurrency", type=int, default=32)
     parser.add_argument("--timeout", type=float, default=600, help="per-request seconds (cold starts are slow)")
+    parser.add_argument("--max-tokens", type=int, default=MAX_TOKENS, help="0 = no limit")
     parser.add_argument("--base-url", help="default: $DMI_INFERENCE_URL")
-    parser.add_argument("--api-key", help="default: $DMI_INFERENCE_API_KEY")
+    parser.add_argument("--api-key-env", default="DMI_INFERENCE_API_KEY",
+                        help="env / .env variable holding the API key (keeps keys out of shell history)")
     args = parser.parse_args()
     asyncio.run(run(args))
     print(f"Done. Score with:  python -m dmi.eval.score --run {args.run}")

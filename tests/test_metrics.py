@@ -21,7 +21,7 @@ def test_unparseable_prediction_scores_zero():
     assert metrics.parse_prediction("{not json") is None
     assert metrics.parse_prediction('["a list"]') is None
     row = metrics.score(None, _label())
-    assert row["valid_json"] == row["schema_valid"] == row["tier"] == 0.0
+    assert row["valid_json"] == row["schema_valid"] == row["tier"] == row["tier_within_1"] == 0.0
     assert row["acc_role"] == 0.0 and row["num_yearsExperience"] == 0.0
 
 
@@ -36,6 +36,10 @@ def test_numeric_tolerance_and_tier_boundary():
     assert row["num_estimatedAge"] == 0.0 and row["abs_err_estimatedAge"] == 4
     assert row["num_scoreOverall.score"] == 0.0
     assert (row["label_tier"], row["pred_tier"], row["tier"]) == ("M", "H", 0.0)
+    assert row["tier_within_1"] == 1.0
+
+    pred["scoreOverall"]["score"] = 9  # M -> H+: two tiers off
+    assert metrics.score(pred, label)["tier_within_1"] == 0.0
 
 
 def test_nulls_and_text_normalization():
