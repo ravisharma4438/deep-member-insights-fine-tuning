@@ -3,9 +3,10 @@
     python scripts/rc_cache_check.py                 # all members (~12 h at RC's 60/min limit)
     python scripts/rc_cache_check.py --sample 600    # quick estimate (~10 min)
 
-Takes the members the platform's nightly re-screen would re-scrape (a real
-screen, a /in/ URL, tier not Unknown/Blacklist, LinkedIn data older than
---older-than-days), and asks Reverse Contact's free check endpoint
+Takes members with a real screen, a /in/ URL, tier not Unknown/Blacklist,
+and stored LinkedIn data dated more than --older-than-days ago (members with
+no dated LinkedIn data are left out: they are mostly profiles that couldn't be
+scraped), and asks Reverse Contact's free check endpoint
 (POST /v2/fetch/persons/check) when it last fetched each profile. On a
 subscription, a fetch is free when that copy is under 90 days old and costs
 one credit otherwise, so the share of fresh copies is the share of free
@@ -54,7 +55,7 @@ SELECT linkedin, scraped_at FROM (
     AND jsonb_typeof(screen->'response') = 'object'
     AND (tier IS NULL OR tier NOT IN ('Unknown', 'Blacklist'))
 ) m
-WHERE scraped_at IS NULL OR scraped_at < now() - make_interval(days => %(days)s)
+WHERE scraped_at < now() - make_interval(days => %(days)s)
 """
 
 FIELDS = ["url", "status", "rc_last_update", "rc_age_days", "our_scraped_at", "rc_newer_than_ours"]
@@ -87,18 +88,19 @@ def sanitize_linkedin_url(url: str) -> str | None:
     return s.rstrip("/") if s.endswith("/") else s
 
 
-def load_cohort(older_than_days: int) -> dict[str, datetime | None]:
+def load_cohort(older_than_days: int) -> dict[str, datetime]:
     from dmi.db import connect
 
     with connect() as conn, conn.cursor() as cur:
         cur.execute(COHORT_SQL, {"days": older_than_days})
         rows = cur.fetchall()
-    cohort: dict[str, datetime | None] = {}
+    cohort: dict[str, datetime] = {}
     for raw_url, scraped_at in rows:
         url = sanitize_linkedin_url(raw_url or "")
         if url:
             cohort.setdefault(url, scraped_at)
-    print(f"{len(rows):,} members match; {len(cohort):,} distinct valid profile URLs")
+    print(f"{len(rows):,} members with LinkedIn data over {older_than_days} days old; "
+          f"{len(cohort):,} distinct valid profile URLs")
     return cohort
 
 
@@ -156,12 +158,13 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     return (max(0.0, center - half), min(1.0, center + half))
 
 
-def summarize(rows: list[dict], cohort_size: int) -> list[str]:
+def summarize(rows: list[dict], cohort: dict[str, datetime]) -> list[str]:
     """The report, as lines."""
     counts = Counter(r["status"] for r in rows)
     checked = sum(counts[s] for s in ("fresh", "stale", "not_in_rc"))
     if not checked:
         return ["Nothing checked yet."]
+    cohort_size = len(cohort)
     sampled = checked < cohort_size
     lines = [f"Checked {checked:,} of {cohort_size:,} profiles"
              + (f" ({counts['error']} errors, not counted)" if counts["error"] else "")]
@@ -210,7 +213,7 @@ def main() -> None:
     if args.sample:
         urls = urls[: args.sample]
 
-    run = args.run or (f"sample{args.sample}-{args.older_than_days}d" if args.sample else f"all-{args.older_than_days}d")
+    run = args.run or f"{f'sample{args.sample}' if args.sample else 'all'}-{args.older_than_days}d"
     out = settings.REPO_ROOT / "outputs" / "rc_cache_check" / f"{run}.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     done: list[dict] = []
@@ -244,10 +247,10 @@ def main() -> None:
         print("\nStopped; rerun the same command to resume.")
     report = [
         f"Reverse Contact cache check, {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC",
-        f"Cohort: members whose LinkedIn data is over {args.older_than_days} days old "
+        f"Cohort: members whose stored LinkedIn data is over {args.older_than_days} days old "
         f"({len(cohort):,} distinct profiles); run '{run}', seed {args.seed}",
         "",
-        *summarize(done, len(cohort)),
+        *summarize(done, cohort),
         "",
         f"Per-profile results: {out}",
     ]
