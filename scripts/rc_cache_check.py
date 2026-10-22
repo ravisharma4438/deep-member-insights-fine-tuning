@@ -1,7 +1,7 @@
 """How many stale members Reverse Contact already has fresh in its cache.
 
-    python scripts/rc_cache_check.py                 # all members (~12 h at RC's 60/min limit)
-    python scripts/rc_cache_check.py --sample 600    # quick estimate (~10 min)
+    python scripts/rc_cache_check.py --sample 2000   # estimate, ~1 h at the default 30/min
+    python scripts/rc_cache_check.py                 # every member (~22 h)
 
 Takes members with a real screen, a /in/ URL, tier not Unknown/Blacklist,
 and stored LinkedIn data dated more than --older-than-days ago (members with
@@ -13,6 +13,12 @@ one credit otherwise, so the share of fresh copies is the share of free
 re-scrapes.
 
 Free (no credits used), but RC requires at least 2 credits in the workspace.
+
+RC's rate limits are per workspace and shared by every endpoint, so this
+competes with the platform's own scraping. It paces itself (--per-minute,
+default 30), pauses whenever RC reports fewer than --keep-free requests left
+in the current minute, and stops once the workspace's daily allowance drops
+below --daily-keep-free-pct percent.
 Reads the platform DB read-only. Needs DATABASE_URL and REVERSE_CONTACT_API_KEY
 in .env. Progress is appended to outputs/rc_cache_check/<run>.csv, and rerunning
 with the same --run skips profiles already checked, so a full run can be
@@ -43,7 +49,6 @@ from dmi import settings  # noqa: E402
 
 CHECK_URL = "https://api.reversecontact.com/v2/fetch/persons/check"
 FREE_CACHE_DAYS = 90
-REQUEST_INTERVAL_S = 1.05  # RC allows 60 requests/minute
 
 COHORT_SQL = """
 SELECT linkedin, scraped_at FROM (
@@ -121,7 +126,11 @@ def check_profile(url: str, api_key: str) -> dict:
             if e.code == 402:
                 raise SystemExit("Reverse Contact says NO_CREDITS: the free check needs at least 2 credits in the workspace.")
             if e.code == 429 or e.code >= 500:
-                time.sleep(float(e.headers.get("Retry-After") or 5 * (attempt + 1)))
+                try:
+                    retry_after = json.load(e)["error"]["details"]["retryAfter"]
+                except (KeyError, TypeError, ValueError):
+                    retry_after = e.headers.get("Retry-After")
+                time.sleep(float(retry_after or 5 * (attempt + 1)) + 1)
                 continue
             try:
                 return {"http": e.code, "body": json.load(e)}
@@ -130,6 +139,32 @@ def check_profile(url: str, api_key: str) -> dict:
         except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException):
             time.sleep(5 * (attempt + 1))
     return {"http": None, "body": None}
+
+
+def rate_limits(quotas: object, path: str = "quotas") -> list[tuple[str, dict]]:
+    """Every {limit, left, ...} object in RC's `quotas`, with its path."""
+    if not isinstance(quotas, dict):
+        return []
+    if "left" in quotas and "limit" in quotas:
+        return [(path, quotas)]
+    return [found for key, value in quotas.items() for found in rate_limits(value, f"{path}.{key}")]
+
+
+def throttle(body: dict | None, keep_free: int, daily_keep_free_pct: float) -> str | None:
+    """Wait out a nearly used-up minute; return a reason to stop if the daily allowance is low."""
+    for path, limit in rate_limits((body or {}).get("quotas")):
+        name = path.lower()
+        left, total = int(limit.get("left") or 0), int(limit.get("limit") or 0)
+        if "minute" in name and left <= keep_free:
+            try:
+                reset = datetime.fromisoformat(str(limit["nextReset"]).replace("Z", "+00:00"))
+                wait = (reset - datetime.now(timezone.utc)).total_seconds() + 1
+            except (KeyError, ValueError):
+                wait = 60
+            time.sleep(min(max(wait, 1), 61))
+        elif ("day" in name or "daily" in name) and total and left < total * daily_keep_free_pct / 100:
+            return f"only {left:,} of {total:,} daily requests left ({path}); stopping to leave them for the platform"
+    return None
 
 
 def classify(result: dict, our_scraped_at: datetime | None, now: datetime) -> dict:
@@ -203,6 +238,11 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--older-than-days", type=int, default=365, help="cohort: LinkedIn data older than this")
     parser.add_argument("--run", help="results file name (default: all-<days>d or sample<N>-<days>d)")
+    parser.add_argument("--per-minute", type=float, default=30, help="request pace (RC's workspace limit is ~60)")
+    parser.add_argument("--keep-free", type=int, default=20,
+                        help="pause when RC reports this few requests left in the current minute")
+    parser.add_argument("--daily-keep-free-pct", type=float, default=25,
+                        help="stop when less than this %% of the workspace's daily requests is left")
     args = parser.parse_args()
 
     api_key = settings.require("REVERSE_CONTACT_API_KEY")
@@ -222,8 +262,9 @@ def main() -> None:
             done = [r for r in csv.DictReader(f) if r["status"] != "error"]
     checked = {r["url"] for r in done}
     todo = [u for u in urls if u not in checked]
+    interval = 60 / args.per_minute
     print(f"{len(checked):,} already checked in {out.name}; {len(todo):,} to go "
-          f"(~{len(todo) * REQUEST_INTERVAL_S / 60:.0f} min)")
+          f"(~{len(todo) * interval / 60:.0f} min at {args.per_minute:g}/min)")
 
     now = datetime.now(timezone.utc)
     new_file = not out.exists()
@@ -235,14 +276,23 @@ def main() -> None:
             for i, url in enumerate(todo, 1):
                 started = time.monotonic()
                 our_scraped_at = cohort[url]
+                result = check_profile(url, api_key)
+                if i == 1:
+                    limits = rate_limits((result["body"] or {}).get("quotas"))
+                    print("RC limits: " + ("; ".join(f"{p} {l.get('left')}/{l.get('limit')} left" for p, l in limits)
+                                          if limits else "not reported; pacing only"), flush=True)
                 row = {"url": url, "our_scraped_at": our_scraped_at.isoformat() if our_scraped_at else "",
-                       **classify(check_profile(url, api_key), our_scraped_at, now)}
+                       **classify(result, our_scraped_at, now)}
                 writer.writerow(row)
                 done.append(row)
                 if i % 100 == 0:
                     f.flush()
                     print(f"  {i:,}/{len(todo):,}  {dict(Counter(r['status'] for r in done))}", flush=True)
-                time.sleep(max(0.0, REQUEST_INTERVAL_S - (time.monotonic() - started)))
+                stop_reason = throttle(result["body"], args.keep_free, args.daily_keep_free_pct)
+                if stop_reason:
+                    print(f"\nStopped: {stop_reason}. Rerun later to resume.", flush=True)
+                    break
+                time.sleep(max(0.0, interval - (time.monotonic() - started)))
     except KeyboardInterrupt:
         print("\nStopped; rerun the same command to resume.")
     report = [
